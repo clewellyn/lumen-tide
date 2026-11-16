@@ -1,0 +1,816 @@
+<!doctype html><html><head><meta charset=utf-8><title>Lumen Tide</title><meta name="description" content="A calm pixel-art underwater game: trace light through the dark sea, touch drifting creatures, and make a song and sand mandala that never repeat."><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=VT323&display=swap">
+<style>
+/* Layout: one full-bleed pixel canvas (the sea), a thin HUD floating at the edges, a dive-log title card at lower left. Single deliberate dark look. */
+:root{
+  --abyss:#03111a;
+  --ink:#d6f5ee;
+  --glow:#7dffe0;
+  --glow-dim:#3fa894;
+  --muted:#80a9ae;
+  --panel:rgba(3,17,26,.62);
+  --line:rgba(125,255,224,.22);
+  --display:"Silkscreen", "Courier New", monospace;
+  --body:"VT323", "Courier New", monospace;
+  color-scheme:dark;
+}
+html,body{height:100%;}
+body{background:var(--abyss);color:var(--ink);font-family:var(--body);overflow:hidden;}
+#stage{position:fixed;inset:0;overflow:hidden;touch-action:none;cursor:none;background:var(--abyss);}
+#sea{position:absolute;left:0;top:0;image-rendering:pixelated;image-rendering:crisp-edges;}
+
+.hud{position:fixed;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;
+  padding-top:calc(14px + env(safe-area-inset-top,0px));
+  padding-left:max(16px, env(safe-area-inset-left,0px));padding-right:max(16px, env(safe-area-inset-right,0px));
+  pointer-events:none;transition:opacity .8s ease;}
+.hud.off{opacity:0;}
+.log{display:flex;flex-direction:column;gap:2px;}
+.eyebrow{font-family:var(--display);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);}
+.log .now{font-family:var(--display);font-size:18px;color:var(--ink);}
+.right{display:flex;flex-direction:column;align-items:flex-end;gap:8px;}
+.pips{display:flex;gap:5px;}
+.pips[hidden]{display:none;}
+.pip{width:9px;height:9px;background:transparent;box-shadow:inset 0 0 0 2px var(--glow-dim);transition:background .3s, box-shadow .3s;}
+.pip.on{background:var(--glow);box-shadow:0 0 8px var(--glow);}
+.toggles{display:flex;gap:6px;pointer-events:auto;}
+.tg{font-family:var(--display);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink);background:var(--panel);
+  border:2px solid var(--line);padding:5px 8px;cursor:pointer;}
+.tg[aria-pressed="false"]{color:var(--muted);text-decoration:line-through;}
+.tg:hover{border-color:var(--glow-dim);}
+.tg:focus-visible,.begin:focus-visible{outline:2px solid var(--glow);outline-offset:2px;}
+
+.banner{position:fixed;left:50%;top:22%;transform:translate(-50%,0);display:flex;align-items:center;gap:16px;
+  padding:14px 20px;background:var(--panel);border:2px solid var(--line);opacity:0;pointer-events:none;transition:opacity 1.2s ease;
+  max-width:calc(100% - 32px);}
+.banner.show{opacity:1;}
+.whisper{position:fixed;left:max(20px, env(safe-area-inset-left,0px));bottom:calc(76px + env(safe-area-inset-bottom,0px));right:16px;
+  font-size:22px;color:var(--muted);opacity:0;transition:opacity 2.5s ease;pointer-events:none;text-shadow:0 0 10px var(--abyss);}
+.whisper.show{opacity:.9;}
+.banner canvas{image-rendering:pixelated;flex:none;}
+.banner .txt{display:flex;flex-direction:column;gap:2px;min-width:0;}
+.banner .name{font-family:var(--display);font-size:22px;color:var(--glow);text-wrap:balance;}
+.banner .line{font-size:21px;color:var(--ink);}
+
+.title{position:fixed;left:0;bottom:0;display:flex;flex-direction:column;gap:12px;max-width:520px;
+  padding-bottom:calc(32px + env(safe-area-inset-bottom,0px));
+  padding-left:max(28px, env(safe-area-inset-left,0px));padding-right:max(16px, env(safe-area-inset-right,0px));
+  transition:opacity 1s ease;}
+.title.gone{opacity:0;pointer-events:none;}
+.intro{position:fixed;inset:0;display:flex;background:rgba(3,17,26,.55);
+  padding-block:24px;padding-left:max(16px, env(safe-area-inset-left,0px));padding-right:max(16px, env(safe-area-inset-right,0px));
+  opacity:0;pointer-events:none;transition:opacity 1.4s ease;overflow-y:auto;}
+.intro.show{opacity:1;pointer-events:auto;}
+.intro .card{margin:auto;display:flex;flex-direction:column;gap:14px;max-width:560px;width:100%;padding:24px 26px;background:var(--panel);border:2px solid var(--line);}
+.intro h2{margin:0;font-family:var(--display);font-weight:700;font-size:clamp(22px,4vw,30px);line-height:1.15;color:var(--glow);text-wrap:balance;}
+.intro p{margin:0;font-size:22px;line-height:1.2;color:var(--ink);max-width:46ch;}
+.intro .breath{font-size:20px;color:var(--muted);}
+@media (max-width:480px){ .intro .card{padding:18px 18px;gap:10px;} .intro p{font-size:19px;} }
+.title h1{margin:0;font-family:var(--display);font-weight:700;font-size:clamp(34px,7vw,64px);line-height:1;color:var(--glow);
+  text-shadow:0 0 18px rgba(125,255,224,.45);letter-spacing:.02em;text-wrap:balance;}
+.title p{margin:0;font-size:23px;line-height:1.15;max-width:34ch;color:var(--ink);}
+.title .fine{font-size:19px;color:var(--muted);}
+.begin{align-self:flex-start;font-family:var(--display);font-size:14px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;
+  color:var(--abyss);background:var(--glow);border:none;padding:12px 18px;box-shadow:4px 4px 0 var(--glow-dim);}
+.begin:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 var(--glow-dim);}
+.begin:active{transform:translate(2px,2px);box-shadow:2px 2px 0 var(--glow-dim);}
+.controls{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;gap:8px;
+  padding:6px;background:var(--panel);border:2px solid var(--line);transition:opacity .8s ease;max-width:calc(100% - 32px);}
+.controls.off{opacity:0;pointer-events:none;}
+.ctl{display:flex;align-items:center;gap:7px;font-family:var(--display);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ink);background:transparent;border:2px solid transparent;padding:7px 10px;cursor:pointer;}
+.ctl:hover:not(:disabled){border-color:var(--glow-dim);}
+.ctl:disabled{color:var(--muted);opacity:.45;cursor:default;}
+.ctl:focus-visible{outline:2px solid var(--glow);outline-offset:2px;}
+.ctl i{display:block;width:10px;height:10px;background:currentColor;flex:none;}
+.ctl .i-play{clip-path:polygon(0 0,100% 50%,0 100%);}
+.ctl .i-pause{background:linear-gradient(90deg,currentColor 0 35%,transparent 35% 65%,currentColor 65%);}
+.ctl .i-restart{border-radius:50%;background:transparent;box-shadow:inset 0 0 0 2px currentColor;clip-path:polygon(0 0,60% 0,60% 50%,100% 50%,100% 100%,0 100%);}
+.ctl .i-full{background:
+  linear-gradient(currentColor,currentColor) left top/4px 2px no-repeat, linear-gradient(currentColor,currentColor) left top/2px 4px no-repeat,
+  linear-gradient(currentColor,currentColor) right top/4px 2px no-repeat, linear-gradient(currentColor,currentColor) right top/2px 4px no-repeat,
+  linear-gradient(currentColor,currentColor) left bottom/4px 2px no-repeat, linear-gradient(currentColor,currentColor) left bottom/2px 4px no-repeat,
+  linear-gradient(currentColor,currentColor) right bottom/4px 2px no-repeat, linear-gradient(currentColor,currentColor) right bottom/2px 4px no-repeat;}
+.ctl.fs-on .i-full{transform:scale(.7);}
+#stage.paused{filter:saturate(.55) brightness(.6);transition:filter .6s ease;}
+@media (max-width:420px){ .ctl span{display:none;} .ctl{padding:9px 12px;} }
+@media (prefers-reduced-motion: reduce){ .banner,.title,.hud{transition:none;} }
+</style>
+
+<div id="stage">
+  <canvas id="sea" aria-label="Underwater scene. Move the pointer to leave a glowing trail and touch sea creatures to pop them."></canvas>
+</div>
+
+<div class="hud off" id="hud">
+  <div class="log">
+    <span class="eyebrow" id="depth">Depth 5 m</span>
+    <span class="now" id="now">Sardines nearby</span>
+  </div>
+  <div class="right">
+    <div class="pips" id="pips" hidden></div>
+    <div class="toggles">
+      <button class="tg" id="tgMusic" aria-pressed="true">Music</button>
+      <button class="tg" id="tgChime" aria-pressed="true">Chimes</button>
+    </div>
+  </div>
+</div>
+
+<div class="banner" id="banner" aria-live="polite">
+  <canvas id="bannerArt" width="18" height="14"></canvas>
+  <div class="txt">
+    <span class="eyebrow" id="bEyebrow">Level 2 · 10 m</span>
+    <span class="name" id="bName">Crab</span>
+    <span class="line" id="bLine">A crab sidles along the sand.</span>
+  </div>
+</div>
+
+<div class="controls off" id="controls" role="toolbar" aria-label="Game controls">
+  <button class="ctl" id="cPlay" disabled><i class="i-play"></i><span>Play</span></button>
+  <button class="ctl" id="cPause"><i class="i-pause"></i><span>Pause</span></button>
+  <button class="ctl" id="cRestart"><i class="i-restart"></i><span>Restart</span></button>
+  <button class="ctl" id="cStop"><i></i><span>Stop</span></button>
+  <button class="ctl" id="cFull" aria-pressed="false"><i class="i-full"></i><span>Full screen</span></button>
+</div>
+
+<div class="whisper" id="whisper" aria-live="polite"></div>
+
+<div class="intro" id="intro" role="dialog" aria-modal="true" aria-labelledby="introTitle" hidden>
+  <div class="card">
+    <span class="eyebrow">Before you dive</span>
+    <h2 id="introTitle">There's nothing to win here</h2>
+    <p>Lumen Tide is meant to help you relax. There's no score, no timer and no way to lose.</p>
+    <p>Every creature you touch plays a note. The notes are made fresh as you go, so the song you create has never been heard before and won't be heard again.</p>
+    <p>Each touch also lays a few grains of sand into a mandala. Like the sand mandalas made by Tibetan Buddhist monks, it is built with care and then swept away with the tide.</p>
+    <p>So don't aim for anything or try to finish anything. Stay with whatever is drifting past right now, and let each note and each grain go as it fades.</p>
+    <span class="breath">Take a slow breath when you're ready.</span>
+    <button class="begin" id="introGo">Let go and begin</button>
+  </div>
+</div>
+
+<div class="title" id="title">
+  <span class="eyebrow" id="best">Dive log · 22 creatures below</span>
+  <h1>Lumen Tide</h1>
+  <p>Trace the dark water with light. Touch whatever drifts past and let it go.</p>
+  <p class="fine">Every pop adds a note and a few grains of coloured sand. Together they make a song and a sand mandala that will never come out the same way twice, and both drift away when you're done.</p>
+  <span class="fine">The longer you play, the deeper you drift, and new creatures come to meet you. Sound on; headphones are nice.</span>
+  <button class="begin" id="begin">Begin the dive</button>
+</div>
+
+<script>
+(()=>{
+"use strict";
+// ---------- Creatures ----------
+const LEVELS=[
+ {name:"Sardine",line:"A shoal of sardines glints past.",depth:5,move:"swim",speed:[16,24],amp:[1,3],group:3,left:false,
+  pal:{b:"#4f8fb0",a:"#9fd3e6",c:"#eaf7fb",k:"#0c1c26"},
+  rows:["...bbbbb....","b.bbbbbbbb..","bbbaaaaabkb.",".baaaaaaaabb","bbcccccccccc",".....ccccc.."]},
+ {name:"Crab",line:"A crab sidles along the sand.",depth:10,move:"walk",speed:[6,10],left:false,
+  pal:{r:"#d9583b",o:"#f08a5d",w:"#fff1e0",k:"#1a0c08"},
+  rows:[".r.........r.","rr..w...w..rr","r.r.k...k.r.r","...rrrrrrr...","..rooooooor..",".rrrrrrrrrrr.","r.r.r...r.r.r","r..r.....r..r"]},
+ {name:"Clam",line:"Clams clap their way through the water.",depth:15,move:"clap",speed:[5,8],left:false,
+  pal:{t:"#c79b7a",s:"#ecd0b0",d:"#8a6248",p:"#ffffff"},
+  rows:["....tttt....","..tssssstt..",".tsstsstsst.","tsstsstsssst","tststststsst","dddddpdddddd",".dttttttttd.","..dddddddd.."]},
+ {name:"Starfish",line:"Starfish tumble on the current.",depth:20,move:"drift",speed:[5,8],left:false,
+  pal:{o:"#d9713b",y:"#f2a541",l:"#ffd98a"},
+  rows:[".....o.....","....oyo....","....yly....","ooyyylyyyoo",".oyylllyyo.","..oyylyyo..","...yyyyy...","..yyo.oyy..",".yyo...oyy.",".oo.....oo."]},
+ {name:"Kelp",line:"A loose frond of kelp drifts by.",depth:30,move:"drift",speed:[4,6],left:false,
+  pal:{h:"#86dc92",g:"#3fa060",d:"#22663d"},
+  rows:["...h...","..hg...","..gg.h.",".dgghg.",".dgg...","..ggd..","h.gg...","gggd...",".ggd.h.","..ggg..","..gg...",".dg....",".dg....","..d...."]},
+ {name:"Seahorse",line:"A seahorse bobs upright, unhurried.",depth:40,move:"swim",speed:[4,6],amp:[4,7],left:false,
+  pal:{y:"#e8b04a",o:"#c77f2e",k:"#2a1606"},
+  rows:["...yyy..","..yyykyy","yyyyyyy.","...yyy..","..oyyo..",".oyyy...",".oyyyo..",".oyyy...",".oyyyo..","..yyy...","..yy....","..oy..o.","...y.yo.","...yyy.."]},
+ {name:"Jellyfish",line:"Jellyfish pulse up from below.",depth:60,move:"rise",speed:[2,4],left:false,
+  pal:{p:"#e08cc8",q:"#f9cdec",m:"#b066a4"},
+  rows:["...pppp...",".ppqqqqpp.","pqqqpqqqqp","pqpqqqqpqp","pppppppppp","m.m.mm.m.m",".m.m..m.m.","m..m.m..m.",".m.m..m.m.","m...m...m.",".m..m..m..","....m....."]},
+ {name:"Pufferfish",line:"A pufferfish idles past, round and calm.",depth:80,move:"swim",speed:[5,7],amp:[2,4],left:false,
+  pal:{s:"#a89a3c",y:"#e6d46a",w:"#f7f1c6",k:"#1e1a06"},
+  rows:["...s..s..s..","..syyyyyys..",".syyyyyyyys.","syyyyyyykyys","yyyyyyyyyyyy","syywwwwwwyys",".swwwwwwwws.","..swwwwwws..","...s..s..s.."]},
+ {name:"Sea Turtle",line:"A sea turtle glides in on long flippers.",depth:120,move:"swim",speed:[6,8],amp:[3,5],left:false,
+  pal:{b:"#3f6e4a",g:"#6aae78",s:"#9ccb7a",k:"#10200f"},
+  rows:["...bbbbbb.....","..bgbgbgbb....",".bgbgbgbgbb.ss","bgbgbgbgbgbsks","bbbbbbbbbbbsss",".ss......ss...","ss........ss.."]},
+ {name:"Octopus",line:"An octopus jets softly through the dark.",depth:200,move:"rise",speed:[3,6],left:false,
+  pal:{v:"#b0507a",w:"#de86ab",e:"#fff4f8",k:"#200812"},
+  rows:["...vvvvvv...","..vwwwwwwv..",".vwwwwwwwwv.",".vwewwwwewv.",".vwkwwwwkwv.",".vwwwwwwwwv.","..vvvvvvvv..",".v.v.vv.v.v.","v..v.v.v.v.v","v.v..v.v..v.",".v..v...v..v","..v.v...v..."]},
+ {name:"Manta Ray",line:"A manta ray sweeps slowly overhead.",depth:400,move:"swim",speed:[9,13],amp:[6,10],left:false,
+  pal:{d:"#3a4f7a",l:"#6f8bc0",w:"#cdd8ee"},
+  rows:["........dd........","......dlllld......","dd..ddlllllldd..dd",".ddllllwwllllldd..","..dlllllllllllld..","....dddllllddd....","........dd........","........d.........",".........d........"]},
+ {name:"Anglerfish",line:"Far below, a lure blinks in the deep.",depth:1000,move:"swim",speed:[4,6],amp:[2,3],left:true,lure:[1,0],
+  pal:{l:"#fff6a0",c:"#6a5d84",b:"#3d3656",k:"#ff7a6a",t:"#ecebd2"},
+  rows:[".l............","..c...........","...c..........","....cbbbbb....","..bbbbbbbbbb.b",".bkbbcbbbbbbbb","bbbbbbcbbbbbb.","tbtbtbbbbbbbbb","btbtbbbbbbbbb.",".bbbbbbbbbb..b","...bbbbbbb...."]},
+ // ---- the deep: past the anglerfish, the creatures make their own light ----
+ {name:"Hatchetfish",line:"Silver hatchetfish flicker like falling coins.",depth:1300,move:"swim",speed:[7,11],amp:[1,3],group:3,left:false,
+  glows:[[3,4],[5,4],[7,4]],glowCol:"130,215,255",
+  pal:{d:"#7b8ea3",s:"#c9d6e3",w:"#eef4fa",k:"#0d1420",b:"#7fd8ff"},
+  rows:["....dddd..","..ddsssssd",".dssssskws","dsswwwwwws",".ssbwbwbws","d.sswwwwss","dd..dssss.","d.....dd.."]},
+ {name:"Lanternfish",line:"Lanternfish drift by, dotted with tiny lights.",depth:1500,move:"swim",speed:[6,10],amp:[1,2],group:4,left:false,
+  glows:[[3,3],[5,3],[7,3]],glowCol:"160,240,255",
+  pal:{b:"#3b4a6a",l:"#6d7fa8",g:"#9ff3ff",k:"#0a0f1c"},
+  rows:["..bbbbb...","b.blllllbb","bbllllllkb","b.lgbgbgl.","...bbbbb.."]},
+ {name:"Vampire Squid",line:"A vampire squid unfurls its cloak and rises.",depth:1800,move:"rise",speed:[2,4],left:false,
+  glows:[[3,4],[8,4]],glowCol:"120,230,255",
+  pal:{d:"#4a0f1c",r:"#7a1f2e",w:"#d9e8f0",e:"#6fe8ff"},
+  rows:["..d......d..",".ddrrrrrrdd.","..rrrrrrrr..","..rwrrrrwr..","..rerrrrer..","..rrrrrrrr..",".drrrrrrrrd.","drdrdrrdrdrd","d.d.drrd.d.d","..d..dd..d..",".....d......"]},
+ {name:"Comb Jelly",line:"A comb jelly ripples with soft rainbow light.",depth:2100,move:"rise",speed:[2,3],left:false,
+  glows:[[3,5]],glowCol:"200,225,255",
+  pal:{c:"#cfe9ff","1":"#ff8fb0","2":"#ffd27a","3":"#8fffb0","4":"#8fc8ff"},
+  rows:["...cc...","..c14c..",".c2cc3c.",".1cccc4.","c2cccc3c","c3cccc2c",".4cccc1.",".c3cc2c.","..c41c..","...cc..."]},
+ {name:"Gulper Eel",line:"A gulper eel trails a pink light at the tip of its tail.",depth:2500,move:"swim",speed:[4,6],amp:[2,4],left:true,
+  glows:[[19,4]],glowCol:"255,110,180",
+  pal:{b:"#2b2440",m:"#4a3d68",p:"#ff6ab0",k:"#ff9a8a"},
+  rows:["bbbb................","bmmmb...............","kbmmmbbbbbbb........","bbbbbbbbbbbbbbbbbb..",".bbbb.......bbbbbbbp"]},
+ {name:"Barreleye",line:"A barreleye looks up through its clear glass head.",depth:2900,move:"swim",speed:[3,5],amp:[2,3],left:false,
+  glows:[[5,1],[6,1]],glowCol:"125,255,138",
+  pal:{c:"#bfe8f5",g:"#7dff8a",l:"#8a9aa8",d:"#5c6b78"},
+  rows:["....cccc....","...cggggc...","..cc.gg.cc..","..lllllllll.",".llldlllllld","lllllllllldd",".ldddddddld.","..dd....dd.."]},
+ {name:"Dumbo Octopus",line:"A dumbo octopus flaps its little ears and floats up.",depth:3300,move:"rise",speed:[2,3],left:false,
+  pal:{p:"#e7a6b8",q:"#f6cfd9",d:"#b97088",k:"#2a0f18"},
+  rows:["..pp....pp..",".ppp.pp.ppp.","..ppqqqqpp..","...pqqqqp...","...pkqqkp...","...pqqqqp...","..dpppppd...",".d.d.dd.d.d.",".d..d..d..d.","..d..dd..d.."]},
+ {name:"Siphonophore",line:"A siphonophore, a living chain, drifts endlessly past.",depth:3700,move:"drift",speed:[3,5],left:false,
+  glows:[[2,0],[1,3],[4,7],[1,11]],glowCol:"150,220,255",
+  pal:{w:"#e8fbff",c:"#9fe0ff",o:"#ffb070"},
+  rows:["..ww..",".wccw.","..cc..",".o..o.","..cc..",".c..c.","..cc..",".o..o.","..cc..",".c..c.","..cc..",".o..o.","..c...","...c..","..c...","...c.."]},
+ {name:"Sea Pig",line:"Sea pigs amble slowly across the soft floor.",depth:4200,move:"walk",speed:[3,5],left:true,dirSprite:true,
+  pal:{d:"#c88aa0",p:"#f0b8c8",k:"#3a1420"},
+  rows:["..d..d..d...",".pppppppppp.","pkpppppppppp","pppppppppppd",".d.d.d.d.d.."]},
+ {name:"Giant Isopod",line:"A giant isopod trundles along the bottom of the world.",depth:4800,move:"walk",speed:[3,4],left:true,dirSprite:true,
+  pal:{g:"#b8b0a0",d:"#857c6c",k:"#1a1612"},
+  rows:["..dgdgdgdgd...",".dgdgdgdgdgdg.","kgdgdgdgdgdgdg","dddddddddddddd",".d.d.d.d.d.d.."]},
+];
+
+function makeCanvas(w,h){const c=document.createElement("canvas");c.width=w;c.height=h;return c;}
+const SPR=LEVELS.map(def=>{
+  const w=Math.max(...def.rows.map(r=>r.length)),h=def.rows.length;
+  const n=makeCanvas(w,h),f=makeCanvas(w,h),x=makeCanvas(w,h),xf=makeCanvas(w,h);
+  const g=n.getContext("2d"),gx=x.getContext("2d");
+  def.rows.forEach((r,y)=>[...r].forEach((ch,i)=>{
+    const col=def.pal[ch]; if(!col) return;
+    g.fillStyle=col; g.fillRect(i,y,1,1);
+    gx.fillStyle="#f4fffc"; gx.fillRect(i,y,1,1);
+  }));
+  const gf=f.getContext("2d"); gf.translate(w,0); gf.scale(-1,1); gf.drawImage(n,0,0);
+  const gxf=xf.getContext("2d"); gxf.translate(w,0); gxf.scale(-1,1); gxf.drawImage(x,0,0);
+  return {w,h,n,f,x,xf,colors:Object.values(def.pal)};
+});
+
+// ---------- Canvas & sizing ----------
+const stage=document.getElementById("stage"), cv=document.getElementById("sea"), g=cv.getContext("2d");
+let S=3,W=320,H=180,floorY=168;
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const mix=(a,b,t)=>a.map((v,i)=>Math.round(v+(b[i]-v)*t));
+function mulberry(s){return()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const BAYER=[[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
+
+let level=1,popped=0,started=false;
+const reduced=matchMedia("(prefers-reduced-motion: reduce)").matches;
+const depthT=lv=>Math.min(1,(lv-1)/11);
+const depthOf=lv=>lv<=LEVELS.length?LEVELS[lv-1].depth:LEVELS[LEVELS.length-1].depth+(lv-LEVELS.length)*250;
+
+let bg=null,bgPrev=null,bgBlend=1,weeds=[],snow=[];
+function resize(){
+  S=Math.max(2,Math.round(innerHeight/190));
+  W=Math.ceil(innerWidth/S); H=Math.ceil(innerHeight/S);
+  cv.width=W; cv.height=H; cv.style.width=W*S+"px"; cv.style.height=H*S+"px";
+  g.imageSmoothingEnabled=false;
+  floorY=H-12;
+  const r=mulberry(7);
+  weeds=[]; const n=Math.max(4,Math.floor(W/26));
+  for(let i=0;i<n;i++) weeds.push({x:Math.floor(r()*W),h:Math.floor(10+r()*Math.min(40,H*0.25)),ph:r()*6.28,tone:r()});
+  snow=[]; for(let i=0;i<Math.floor(W*H/900);i++) snow.push({x:Math.random()*W,y:Math.random()*H,v:rnd(.6,2.2),a:rnd(.15,.5)});
+  bg=buildBG(level); bgPrev=null; bgBlend=1;
+}
+function buildBG(lv){
+  const c=makeCanvas(W,H),gg=c.getContext("2d"),img=gg.createImageData(W,H),d=img.data;
+  const t=Math.pow(depthT(lv),.8);
+  const top=mix([38,128,158],[5,13,30],t), bot=mix([8,52,80],[1,4,11],t);
+  const sandA=mix([168,150,104],[34,36,48],t), sandB=mix([110,96,70],[16,18,26],t);
+  const bands=9, r=mulberry(11);
+  const prof=[]; for(let x=0;x<W;x++) prof.push(floorY+Math.round(Math.sin(x*0.045+1)*1.6+Math.sin(x*0.13)*1));
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const th=(BAYER[y&3][x&3]+.5)/16; let col;
+    if(y>=prof[x]){
+      const v=(y-prof[x])/12; const f=v*4; let b=Math.floor(f); if(f-b>th) b++;
+      col=y===prof[x]?mix(sandA,[255,255,240],.15):mix(sandA,sandB,Math.min(1,b/4));
+    }else{
+      const f=(y/(H-1))*(bands-1); let b=Math.floor(f); if(f-b>th) b++;
+      col=mix(top,bot,b/(bands-1));
+    }
+    const i=(y*W+x)*4; d[i]=col[0];d[i+1]=col[1];d[i+2]=col[2];d[i+3]=255;
+  }
+  gg.putImageData(img,0,0);
+  // rocks & pebbles
+  const rock=mix([70,86,96],[20,24,36],t), rockHi=mix([108,126,132],[34,40,56],t);
+  for(let k=0;k<Math.max(2,W/90);k++){
+    const cx=Math.floor(r()*W), rw=4+Math.floor(r()*8), rh=2+Math.floor(r()*4);
+    for(let y=-rh;y<=0;y++)for(let x=-rw;x<=rw;x++){ if((x*x)/(rw*rw)+(y*y)/(rh*rh)<=1){gg.fillStyle=`rgb(${(y<-rh/2&&x<0?rockHi:rock).join()})`;gg.fillRect(cx+x,prof[Math.max(0,Math.min(W-1,cx))]+y+1,1,1);} }
+  }
+  gg.fillStyle=`rgba(${sandB.join()},.9)`;
+  for(let k=0;k<W/6;k++){const x=Math.floor(r()*W); gg.fillRect(x,prof[x]+2+Math.floor(r()*8),1,1);}
+  return c;
+}
+
+// ---------- Entities ----------
+let creatures=[],trail=[],parts=[],rings=[],bubbles=[],spawnT=0,time=0;
+function unlocked(){return Math.min(level,LEVELS.length);}
+function spawn(){
+  const u=unlocked(), pNew=Math.min(.45,.12+popped*.04); const idx=(u===1||Math.random()<pNew)?u-1:Math.floor(Math.random()*(u===1?1:u-1));
+  const def=LEVELS[idx], sp=SPR[idx], dir=Math.random()<.5?1:-1;
+  const count=def.group?Math.floor(rnd(2,def.group+1)):1;
+  const baseY=rnd(H*.16,floorY-sp.h-8), sp0=rnd(def.speed[0],def.speed[1]);
+  for(let k=0;k<count;k++){
+    const c={i:idx,def,sp,t:0,ph:Math.random()*6.28,state:"live",pop:0,dir};
+    const off=k*(sp.w+4);
+    switch(def.move){
+      case "swim": c.x=dir>0?-sp.w-off:W+sp.w+off; c.by=baseY+(k?rnd(-6,6):0); c.y=c.by; c.vx=dir*sp0; c.amp=rnd(def.amp[0],def.amp[1]); c.fq=rnd(.6,1.2); break;
+      case "walk": c.x=dir>0?-sp.w:W+sp.w; c.y=floorY-sp.h/2+1; c.vx=dir*sp0; break;
+      case "clap": c.x=dir>0?-sp.w:W+sp.w; c.y=rnd(H*.45,floorY-sp.h-4); c.vx=dir*sp0; c.vy=0; break;
+      case "drift": c.x=dir>0?-sp.w:W+sp.w; c.by=rnd(H*.12,H*.55); c.y=c.by; c.vx=dir*sp0; c.vy=rnd(1,3); break;
+      case "rise": c.x=rnd(W*.1,W*.9); c.y=H+sp.h; c.vx=rnd(-3,3); c.vy=0; c.fq=rnd(1.8,2.6); c.sp0=sp0; break;
+    }
+    creatures.push(c);
+  }
+}
+function updateCreature(c,dt){
+  c.t+=dt; const d=c.def;
+  if(c.state==="pop"){c.pop+=dt; return c.pop<.35;}
+  switch(d.move){
+    case "swim": c.x+=c.vx*dt; c.y=c.by+Math.sin(c.t*c.fq+c.ph)*c.amp; break;
+    case "walk": c.x+=c.vx*dt*(.45+.55*Math.abs(Math.sin(c.t*3+c.ph))); break;
+    case "clap": c.x+=c.vx*dt; c.vy+=8*dt; if(c.vy>4) c.vy=-9; c.y+=c.vy*dt; c.y=Math.max(H*.14,Math.min(floorY-c.sp.h/2,c.y)); break;
+    case "drift": c.x+=c.vx*dt+Math.sin(c.t*.9+c.ph)*.08; c.by+=c.vy*dt; c.y=c.by+Math.sin(c.t*.7+c.ph)*3; break;
+    case "rise": { const p=Math.max(0,Math.sin(c.t*c.fq+c.ph)); c.y-=(c.sp0+14*p*p)*dt; c.x+=c.vx*dt; break; }
+  }
+  const m=30; return !(c.x<-c.sp.w-m*2||c.x>W+c.sp.w+m*2||c.y<-c.sp.h-m||c.y>H+c.sp.h+m);
+}
+function facing(c){ // true = draw flipped
+  const movingRight=c.def.move==="rise"?c.vx>=0:c.vx>0;
+  if(c.def.move==="walk"&&!c.def.dirSprite||c.def.move==="rise") return false;
+  return c.def.left?movingRight:!movingRight;
+}
+function drawCreature(c){
+  const sp=c.sp, fl=facing(c);
+  let x=Math.round(c.x-sp.w/2), y=Math.round(c.y-sp.h/2);
+  if(c.def.move==="walk") y-= (Math.floor(c.t*6)%2);
+  if(c.def.lure){ // anglerfish glow
+    const lx=x+(fl?sp.w-1-c.def.lure[0]:c.def.lure[0]), ly=y+c.def.lure[1];
+    const pulse=.6+.4*Math.sin(time*2.4+c.ph);
+    g.globalCompositeOperation="lighter";
+    for(const [r,a] of [[8,.05],[5,.08],[3,.14]]){ g.fillStyle=`rgba(255,240,150,${a*pulse})`;
+      for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++) if(dx*dx+dy*dy<=r*r) g.fillRect(lx+dx,ly+dy,1,1); }
+    g.globalCompositeOperation="source-over";
+  }
+  if(c.def.glows&&c.state!=="pop"){ // bioluminescent spots on deep-sea creatures
+    const pulse=.55+.45*Math.sin(time*1.8+c.ph);
+    g.globalCompositeOperation="lighter";
+    for(const [gx,gy] of c.def.glows){ const lx=x+(fl?sp.w-1-gx:gx), ly=y+gy;
+      for(const [r,a] of [[4,.05],[2,.12]]){ g.fillStyle=`rgba(${c.def.glowCol},${a*pulse})`;
+        for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++) if(dx*dx+dy*dy<=r*r) g.fillRect(lx+dx,ly+dy,1,1); } }
+    g.globalCompositeOperation="source-over";
+  }
+  if(c.state==="pop"){
+    const k=c.pop/.35, s=1+k*.9, w=sp.w*s, h=sp.h*s;
+    g.globalAlpha=1-k; g.drawImage(fl?sp.xf:sp.x,Math.round(c.x-w/2),Math.round(c.y-h/2),Math.round(w),Math.round(h)); g.globalAlpha=1; return;
+  }
+  g.drawImage(fl?sp.f:sp.n,x,y);
+}
+
+// ---------- Pointer & trail ----------
+const ptr={x:0,y:0,on:false,last:0};
+const TRAIL=["#7dff9a","#5cf27a","#a8ff8c","#c6ffb0","#48e08a"];
+function local(e){const r=cv.getBoundingClientRect(); return {x:(e.clientX-r.left)/S, y:(e.clientY-r.top)/S};}
+function moveTo(p){
+  if(!ptr.on){ptr.x=p.x;ptr.y=p.y;ptr.on=true;}
+  const dx=p.x-ptr.x, dy=p.y-ptr.y, dist=Math.hypot(dx,dy), steps=Math.min(40,Math.max(1,Math.ceil(dist/1.2)));
+  for(let s=1;s<=steps;s++){
+    const t=s/steps, x=ptr.x+dx*t, y=ptr.y+dy*t;
+    trail.push({x,y,vx:rnd(-1.5,1.5),vy:rnd(-3,-.5),life:rnd(.35,.6),max:.6,c:TRAIL[(Math.random()*TRAIL.length)|0]});
+    if(Math.random()<.12) trail.push({x:x+rnd(-3,3),y:y+rnd(-3,3),vx:rnd(-4,4),vy:rnd(-6,-1),life:rnd(.5,.9),max:.9,c:"#e4ffd8",spark:true});
+  }
+  if(started&&!paused) hitTest(ptr.x,ptr.y,p.x,p.y);
+  ptr.x=p.x; ptr.y=p.y; ptr.last=performance.now();
+  if(trail.length>1400) trail.splice(0,trail.length-1400);
+}
+function segDist(px,py,ax,ay,bx,by){const vx=bx-ax,vy=by-ay,l=vx*vx+vy*vy; let t=l?((px-ax)*vx+(py-ay)*vy)/l:0; t=Math.max(0,Math.min(1,t)); return Math.hypot(px-(ax+vx*t),py-(ay+vy*t));}
+function hitTest(ax,ay,bx,by){
+  for(const c of creatures){ if(c.state!=="live") continue;
+    if(c.x<-4||c.x>W+4||c.y<-4||c.y>H+4) continue;
+    const r=Math.max(c.sp.w,c.sp.h)*.5+2.5;
+    if(segDist(c.x,c.y,ax,ay,bx,by)<r) popCreature(c);
+  }
+}
+stage.addEventListener("pointermove",e=>{ const list=e.getCoalescedEvents?e.getCoalescedEvents():[e]; for(const ev of (list.length?list:[e])) moveTo(local(ev)); });
+stage.addEventListener("pointerdown",e=>{ if(e.pointerType!=="mouse") ptr.on=false; moveTo(local(e)); });
+stage.addEventListener("pointerleave",()=>{ptr.on=false;});
+stage.addEventListener("pointerup",e=>{ if(e.pointerType!=="mouse") ptr.on=false; });
+
+// ---------- Popping ----------
+// ---------- Sand mandala: every pop lays an 8-fold motif of grains that slowly fades, and is swept away at the end ----------
+let grains=[],motifN=0,motifSeq=0;
+const mcx=()=>W/2, mcy=()=>floorY*.47;
+function addMotif(color,id){
+  const R=Math.min(W*.45,floorY*.44), ring=Math.floor(motifN/3)%9; motifN++;
+  const r=Math.min(R,6+ring*(R-6)/8+rnd(-1.2,1.2)), a0=Math.random()*Math.PI/4, shape=(Math.random()*4)|0, sym=8;
+  const pts=[[[0,0]],[[-1.5,0],[0,0],[1.5,0]],[[0,-1.3],[0,0],[0,1.3]],[[0,0],[1.4,-1],[1.4,1]]][shape];
+  for(let k=0;k<sym;k++){ const a=a0+k*Math.PI*2/sym, ca=Math.cos(a), sa=Math.sin(a);
+    for(const [dr,dt] of pts) grains.push({x:mcx()+ca*(r+dr)-sa*dt,y:mcy()+sa*(r+dr)+ca*dt,c:color,born:time,life:rnd(110,150),id,glow:1,sweep:0}); }
+  if(grains.length>2400) grains.splice(0,grains.length-2400);
+}
+function sweepMandala(){
+  const cx=mcx(),cy=mcy();
+  for(const q of grains){ if(q.sweep) continue; const a=Math.atan2(q.y-cy,q.x-cx), v=rnd(10,30);
+    q.vx=Math.cos(a)*v+rnd(6,14); q.vy=Math.sin(a)*v*.5-rnd(0,5); q.sweep=rnd(2,4); q.sw0=q.sweep; }
+  motifN=0;
+}
+function drawMandala(dt){
+  grains=grains.filter(q=>{
+    let a;
+    if(q.sweep){ q.sweep-=dt; if(q.sweep<=0) return false; q.vx*=Math.pow(.5,dt); q.vy*=Math.pow(.5,dt); q.vy+=3*dt;
+      q.x+=q.vx*dt+Math.sin(time*2+q.y)*.05; q.y+=q.vy*dt; a=.5*(q.sweep/q.sw0); }
+    else { if(paused) return true; const age=time-q.born; if(age>q.life) return false;
+      a=.42*Math.min(1,age/1.5)*Math.min(1,(q.life-age)/25); }
+    q.glow=Math.max(0,q.glow-dt*.7);
+    g.globalAlpha=Math.min(1,a+q.glow*.55); g.fillStyle=q.c; g.fillRect(Math.round(q.x),Math.round(q.y),1,1); return true; });
+  g.globalAlpha=1;
+}
+
+function popCreature(c){
+  c.state="pop"; c.pop=0;
+  const n=reduced?10:24;
+  for(let k=0;k<n;k++){const a=Math.random()*6.283, v=rnd(14,46);
+    parts.push({x:c.x,y:c.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life:rnd(.5,1.1),max:1.1,c:c.sp.colors[(Math.random()*c.sp.colors.length)|0]});}
+  for(let k=0;k<(reduced?6:16);k++){const a=Math.random()*6.283, v=rnd(6,22);
+    trail.push({x:c.x,y:c.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-4,life:rnd(.5,1),max:1,c:TRAIL[(Math.random()*TRAIL.length)|0],spark:true});}
+  rings.push({x:c.x,y:c.y,r:2,life:.7});
+  for(let k=0;k<5;k++) bubbles.push({x:c.x+rnd(-4,4),y:c.y+rnd(-3,3),v:rnd(8,16),ph:Math.random()*6,big:Math.random()<.35});
+  const id=++motifSeq, col=c.sp.colors[Math.min(1,c.sp.colors.length-1)];
+  addMotif(col,id); Audio.pop(c.i,c.x,c.y,c.sp.colors[0],id);
+  popped++; renderPips();
+  if(popped>=10) setTimeout(levelUp,700);
+}
+function levelUp(){
+  if(popped<10) return;
+  level++; popped=0; renderPips();
+  bgPrev=bg; bg=buildBG(level); bgBlend=0;
+  updateHud(); showBanner(); Audio.levelChord(); saveBest();
+}
+
+// ---------- HUD ----------
+const pipsEl=document.getElementById("pips");
+for(let i=0;i<10;i++){const s=document.createElement("span");s.className="pip";pipsEl.appendChild(s);}
+function renderPips(){[...pipsEl.children].forEach((p,i)=>p.classList.toggle("on",i<popped)); pipsEl.setAttribute("aria-label",`${popped} of 10 popped this level`);}
+function currentNew(){return LEVELS[unlocked()-1];}
+function updateHud(){
+  document.getElementById("depth").textContent=`Depth ${depthOf(level).toLocaleString()} m`;
+  document.getElementById("now").textContent=level<=LEVELS.length?`Newest: ${currentNew().name}`:`The whole ocean`;
+}
+let bannerTimer=0;
+function showBanner(msg){
+  const b=document.getElementById("banner"), art=document.getElementById("bannerArt");
+  if(msg){ art.hidden=true; document.getElementById("bEyebrow").textContent=msg[0]; document.getElementById("bName").textContent=msg[1];
+    document.getElementById("bLine").textContent=msg[2]; b.classList.add("show"); clearTimeout(bannerTimer); bannerTimer=setTimeout(()=>b.classList.remove("show"),msg[3]||4200); return; }
+  art.hidden=false;
+  const deep=level>LEVELS.length, idx=unlocked()-1, sp=SPR[idx];
+  art.width=sp.w; art.height=sp.h; art.style.width=sp.w*4+"px"; art.style.height=sp.h*4+"px";
+  const ag=art.getContext("2d"); ag.clearRect(0,0,sp.w,sp.h); ag.drawImage(sp.n,0,0);
+  document.getElementById("bEyebrow").textContent=`Drifting to ${depthOf(level).toLocaleString()} m`;
+  document.getElementById("bName").textContent=deep?"Deeper still":LEVELS[idx].name;
+  document.getElementById("bLine").textContent=deep?"Everyone you have met swims together now.":LEVELS[idx].line;
+  b.classList.add("show"); clearTimeout(bannerTimer); bannerTimer=setTimeout(()=>b.classList.remove("show"),4200);
+}
+function saveBest(){try{const b=+localStorage.getItem("lumen-best")||0; if(level>b) localStorage.setItem("lumen-best",String(level));}catch(e){}}
+try{const b=+localStorage.getItem("lumen-best")||0; if(b>1) document.getElementById("best").textContent=`Dive log · deepest so far ${depthOf(b).toLocaleString()} m`;}catch(e){}
+
+// ---------- Audio ----------
+const Audio=(()=>{
+  let ctx=null,master,music,sfx,musicOn=true,sfxOn=true,timer=0,nextChord=0,chordIdx=0,nextNote=0,noteIdx=3,combo=0,lastPop=0,recent=[];
+  const mtof=m=>440*Math.pow(2,(m-69)/12);
+  const CHORDS=[[50,57,62,64,69],[47,54,59,62,66],[43,50,57,59,66],[45,52,57,59,64]];
+  const MEL=[69,71,74,76,78,81,83,86];
+  let chordLog=[]; // {t,notes} so chimes always sit inside the chord that is sounding
+  function ladder(){ // chord tones of the current pad chord, spread from D4 up to about D6 (singing-bowl register)
+    const now=ctx.currentTime; let cur=chordLog[0]?chordLog[0].notes:CHORDS[0];
+    for(const c of chordLog) if(c.t<=now+.3) cur=c.notes;
+    const pcs=[...new Set(cur.map(n=>n%12))], out=[];
+    for(let m=62;m<=86;m++) if(pcs.includes(m%12)) out.push(m);
+    return out;
+  }
+  function ladderIn(lo,hi){ const L=ladder(), pcs=[...new Set(L.map(m=>m%12))], out=[];
+    for(let m=lo;m<=hi;m++) if(pcs.includes(m%12)) out.push(m); return out; }
+  let chimeBus=null, noiseBuf=null;
+  function impulse(sec,decay){const r=ctx.sampleRate,len=Math.floor(r*sec),b=ctx.createBuffer(2,len,r);
+    for(let ch=0;ch<2;ch++){const d=b.getChannelData(ch); for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,decay);} return b;}
+  function init(){
+    if(ctx) return; const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+    ctx=new AC(); master=ctx.createGain(); master.gain.value=.85; master.connect(ctx.destination);
+    const verb=ctx.createConvolver(); verb.buffer=impulse(5,2.4); const vg=ctx.createGain(); vg.gain.value=.8; verb.connect(vg).connect(master);
+    music=ctx.createGain(); music.gain.value=musicOn?.5:0; music.connect(master); const ms=ctx.createGain(); ms.gain.value=.85; music.connect(ms).connect(verb);
+    sfx=ctx.createGain(); sfx.gain.value=sfxOn?.55:0; sfx.connect(master); const ss=ctx.createGain(); ss.gain.value=.9; sfx.connect(ss).connect(verb);
+    chimeBus=ctx.createBiquadFilter(); chimeBus.type="lowpass"; chimeBus.frequency.value=2000; chimeBus.Q.value=.2; chimeBus.connect(sfx);
+    noiseBuf=ctx.createBuffer(1,ctx.sampleRate*2,ctx.sampleRate); {const d=noiseBuf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;}
+    nextChord=ctx.currentTime+.1; nextNote=ctx.currentTime+2.5;
+    timer=setInterval(tick,200); tick();
+  }
+  function chord(notes,t){
+    const f=ctx.createBiquadFilter(); f.type="lowpass"; f.frequency.value=720; f.Q.value=.4;
+    const lfo=ctx.createOscillator(), lg=ctx.createGain(); lfo.frequency.value=.08; lg.gain.value=260; lfo.connect(lg).connect(f.frequency);
+    const env=ctx.createGain(); env.gain.setValueAtTime(0,t); env.gain.linearRampToValueAtTime(1,t+3.5); env.gain.setValueAtTime(1,t+8); env.gain.linearRampToValueAtTime(0,t+12.5);
+    f.connect(env).connect(music);
+    notes.forEach(n=>{ for(const [type,det,amp] of [["triangle",-6,.03],["sine",7,.04]]){
+      const o=ctx.createOscillator(),og=ctx.createGain(); o.type=type; o.frequency.value=mtof(n); o.detune.value=det; og.gain.value=amp;
+      o.connect(og).connect(f); o.start(t); o.stop(t+13); }});
+    lfo.start(t); lfo.stop(t+13);
+  }
+  function blip(t){
+    noteIdx=Math.max(0,Math.min(MEL.length-1,noteIdx+[-2,-1,-1,1,1,2][(Math.random()*6)|0]));
+    const f=mtof(MEL[noteIdx]);
+    for(const [mult,amp] of [[1,.05],[2,.012]]){const o=ctx.createOscillator(),og=ctx.createGain(); o.type="sine"; o.frequency.value=f*mult;
+      og.gain.setValueAtTime(0,t); og.gain.linearRampToValueAtTime(amp,t+.06); og.gain.exponentialRampToValueAtTime(.0001,t+3.2);
+      o.connect(og).connect(music); o.start(t); o.stop(t+3.3);}
+  }
+  function tick(){
+    const now=ctx.currentTime;
+    while(nextChord<now+.5){const t=Math.max(nextChord,now); chord(CHORDS[chordIdx%4],t); chordLog.push({t,notes:CHORDS[chordIdx%4]}); if(chordLog.length>4) chordLog.shift(); chordIdx++; nextChord=t+9;}
+    while(nextNote<now+.5){const t=Math.max(nextNote,now); blip(t); nextNote=t+rnd(1.8,5);}
+    // tide-pool echoes: every pop returns quieter on later loops, re-tuned to whatever chord is playing then
+    for(const e of echoes){ if(e.next<now+.5){ const t=Math.max(e.next,now); e.gen++;
+      const L=ladderIn(...VOICES[e.i].range), m=L[Math.min(e.step,L.length-1)];
+      VOICES[e.i].play(m,t,.42*Math.pow(.6,e.gen-1),L,e.step);
+      if(api.onEcho) setTimeout(()=>api.onEcho(e),Math.max(0,(t-now)*1000));
+      e.next=t+LOOP; } }
+    echoes=echoes.filter(e=>e.gen<4);
+  }
+  const LOOP=13.5; let echoes=[];
+  function bell(m,t,vol=1){
+    const f=mtof(m);
+    // whole-number partials only (1,2,3,4) so the tone is pure and singing; a twin fundamental 3 cents sharp gives a slow shimmer
+    // singing bowl: soft mallet attack, a long hum, and paired tones a couple of Hz apart that slowly "breathe" (the bowl's wah-wah)
+    [[1,0,.12,10],[1,1.6,.09,10],[2,0,.03,6],[2,2.3,.022,6],[3,0,.008,3]].forEach(([r,beat,a,d])=>{
+      const o=ctx.createOscillator(),og=ctx.createGain(); o.type="sine"; o.frequency.value=f*r+beat;
+      og.gain.setValueAtTime(0,t); og.gain.linearRampToValueAtTime(a*vol,t+.045); og.gain.exponentialRampToValueAtTime(.0001,t+d);
+      o.connect(og).connect(chimeBus); o.start(t); o.stop(t+d+.05);});
+  }
+  // ---- creature voices: each one a different instrument, always playing tones of the current chord ----
+  function partial(f,t,a,att,dec,type="sine",dest=chimeBus){
+    const o=ctx.createOscillator(),og=ctx.createGain(); o.type=type; o.frequency.value=f;
+    og.gain.setValueAtTime(0,t); og.gain.linearRampToValueAtTime(a,t+att); og.gain.exponentialRampToValueAtTime(.0001,t+att+dec);
+    o.connect(og).connect(dest); o.start(t); o.stop(t+att+dec+.05); return o; }
+  const glass=(m,t,v)=>{const f=mtof(m); partial(f,t,.1*v,.01,4); partial(f+1.2,t,.05*v,.01,4); partial(f*4,t,.01*v,.005,1.2);};
+  const wood=(m,t,v)=>{const f=mtof(m); partial(f,t,.17*v,.004,1.1); partial(f*4,t,.035*v,.002,.18); partial(f*2,t,.03*v,.004,.5);};
+  const kalimba=(m,t,v)=>{const f=mtof(m); partial(f,t,.12*v,.004,2.4); partial(f*2,t,.022*v,.004,.45); partial(f*3,t,.02*v,.003,.25);};
+  const breath=(m,t,v)=>{const f=mtof(m); partial(f,t,.08*v,.8,3.8); partial(f*2,t,.02*v,1,2.5);
+    const n=ctx.createBufferSource(),bp=ctx.createBiquadFilter(),ng=ctx.createGain(); n.buffer=noiseBuf; bp.type="bandpass"; bp.frequency.value=f*2; bp.Q.value=9;
+    ng.gain.setValueAtTime(0,t); ng.gain.linearRampToValueAtTime(.12*v,t+.6); ng.gain.exponentialRampToValueAtTime(.0001,t+2.6);
+    n.connect(bp).connect(ng).connect(chimeBus); n.start(t); n.stop(t+2.7);};
+  const swell=(m,t,v)=>{const f=mtof(m); const o=partial(f,t,.07*v,.7,5,"triangle"); partial(f*1.004,t,.06*v,.9,5);
+    const l=ctx.createOscillator(),lg=ctx.createGain(); l.frequency.value=4.5; lg.gain.value=f*.004; l.connect(lg).connect(o.frequency); l.start(t); l.stop(t+6);};
+  const bloom=(m,t,v)=>{const f=mtof(m); const o=partial(f,t,.13*v,.03,3.2); o.frequency.setValueAtTime(f*.94,t); o.frequency.exponentialRampToValueAtTime(f,t+.3); partial(f*2,t,.025*v,.05,1.4);};
+  const gong=(m,t,v)=>{const f=mtof(m); partial(f,t,.11*v,.09,14); partial(f+1.1,t,.08*v,.09,14); partial(f*2,t,.025*v,.07,6); partial(f*2+1.7,t,.015*v,.07,6); partial(f*3,t,.006*v,.05,3);};
+  const pluck=(m,t,v)=>{const f=mtof(m); partial(f,t,.07*v,.004,2.6,"triangle"); partial(f*2,t,.012*v,.004,.6);};
+  const drone=(m,t,v)=>{const f=mtof(m); partial(f,t,.05*v,1.2,6); partial(f+.8,t,.04*v,1.4,6);};
+  const VOICES=[
+    {name:"Sardine",  range:[79,91], play:(m,t,v)=>glass(m,t,v)},
+    {name:"Crab",     range:[50,62], play:(m,t,v)=>wood(m,t,v)},
+    {name:"Clam",     range:[62,74], play:(m,t,v)=>bell(m,t,v)},
+    {name:"Starfish", range:[74,86], play:(m,t,v)=>kalimba(m,t,v)},
+    {name:"Kelp",     range:[62,74], play:(m,t,v)=>breath(m,t,v)},
+    {name:"Seahorse", range:[76,88], play:(m,t,v,L,k)=>{glass(m,t,v*.8); glass(L[Math.min(k+1,L.length-1)],t+.14,v*.5);}},
+    {name:"Jellyfish",range:[62,76], play:(m,t,v)=>swell(m,t,v)},
+    {name:"Pufferfish",range:[55,67],play:(m,t,v)=>bloom(m,t,v)},
+    {name:"Sea Turtle",range:[45,57],play:(m,t,v)=>gong(m,t,v)},
+    {name:"Octopus",  range:[64,79], play:(m,t,v,L,k)=>{[0,1,2].forEach(j=>pluck(L[Math.min(k+j,L.length-1)],t+j*.11,v));}},
+    {name:"Manta Ray",range:[57,69], play:(m,t,v,L,k)=>{drone(m,t,v); drone(L[Math.min(k+2,L.length-1)],t+.3,v*.8);}},
+    {name:"Anglerfish",range:[50,62],play:(m,t,v)=>{bell(m,t,v); glass(m+24,t+.5,v*.35);}},
+    {name:"Hatchetfish",range:[81,93],play:(m,t,v)=>kalimba(m,t,v*.8)},
+    {name:"Lanternfish",range:[84,96],play:(m,t,v)=>{glass(m,t,v*.6); glass(m,t+.2,v*.3); glass(m,t+.42,v*.15);}},
+    {name:"Vampire Squid",range:[50,62],play:(m,t,v)=>swell(m,t,v*1.1)},
+    {name:"Comb Jelly",range:[74,88],play:(m,t,v,L,k)=>{[0,1,2,3].forEach(j=>glass(L[Math.min(k+j,L.length-1)],t+j*.08,v*(.7-j*.12)));}},
+    {name:"Gulper Eel",range:[45,57],play:(m,t,v)=>{drone(m,t,v*1.2); pluck(m+24,t,v*.5);}},
+    {name:"Barreleye",range:[67,79],play:(m,t,v)=>{bell(m,t,v*.8); glass(m+12,t+.25,v*.4);}},
+    {name:"Dumbo Octopus",range:[60,72],play:(m,t,v)=>{bloom(m,t,v); bloom(m+12,t+.35,v*.4);}},
+    {name:"Siphonophore",range:[69,84],play:(m,t,v,L,k)=>{[0,1,2,3,4].forEach(j=>pluck(L[Math.max(0,Math.min(k+2-j,L.length-1))],t+j*.18,v*.8));}},
+    {name:"Sea Pig",range:[55,67],play:(m,t,v)=>{wood(m,t,v*.8); bloom(m,t+.05,v*.5);}},
+    {name:"Giant Isopod",range:[43,55],play:(m,t,v)=>{gong(m,t,v*.9); wood(m+12,t,v*.5);}},
+  ];
+  const cursor=VOICES.map(()=>({k:-1,last:0}));
+  // a plucked-string layer: bright at the attack, then a closing filter, like a harp or guitar string
+  function string(m,t,v){ const f=mtof(m), lp=ctx.createBiquadFilter(); lp.type="lowpass"; lp.Q.value=1.5;
+    lp.frequency.setValueAtTime(f*9,t); lp.frequency.exponentialRampToValueAtTime(f*1.6,t+.6); lp.connect(chimeBus);
+    partial(f,t,.09*v,.003,3,"triangle",lp); partial(f*2,t,.03*v,.003,1.2,"sawtooth",lp); partial(f*1.002,t,.04*v,.003,3,"sine",lp); }
+  // a bright, quick ting with a near-instant attack; each creature gets its own slightly different sparkle
+  function ting(m,t,v,i){ const f=mtof(m), sparkle=[.012,.02,.008,.016][i%4];
+    partial(f,t,.085*v,.002,1.7,"sine",sfx); partial(f*2,t,.03*v,.002,.8,"sine",sfx);
+    partial(f*3,t,sparkle*v,.002,.4,"sine",sfx); partial(f*4,t,.006*v,.001,.22,"sine",sfx); }
+  let strum={start:-1e9,nextT:0,used:new Set(),pk:0,n:0,prev:0};
+  function bloop(t){
+    const o=ctx.createOscillator(),og=ctx.createGain(); o.type="sine";
+    o.frequency.setValueAtTime(220,t); o.frequency.exponentialRampToValueAtTime(440,t+.1);
+    og.gain.setValueAtTime(0,t); og.gain.linearRampToValueAtTime(.045,t+.015); og.gain.exponentialRampToValueAtTime(.0001,t+.16);
+    o.connect(og).connect(sfx); o.start(t); o.stop(t+.2);
+  }
+  const api={
+    init, onEcho:null,
+    pop(i,x,y,color,id){ if(!ctx) return; const t=ctx.currentTime, n=performance.now();
+      const V=VOICES[i]||VOICES[2], L=ladderIn(...V.range), cu=cursor[i];
+      // each creature wanders its own little melody: drifts up a step when popped in quick succession, otherwise a gentle random step
+      if(cu.k<0||n-cu.last>6000) cu.k=(Math.random()*L.length)|0;
+      else cu.k+=(n-cu.last<2600)?1:[-1,1,1,2][(Math.random()*4)|0];
+      if(cu.k>=L.length) cu.k=Math.max(0,L.length-3); if(cu.k<0) cu.k=0; cu.last=n;
+      recent=recent.filter(z=>n-z<5000); recent.push(n);
+      // pops close together form one strummed chord: each takes a different chord tone, evenly spaced, rising across the strings
+      if(n-strum.prev>260){ const G=ladder(); strum={start:n,nextT:0,used:new Set(),pk:(Math.random()*3)|0,n:0,prev:n}; }
+      strum.n++; strum.prev=n;
+      if(strum.n>1){ const pcs=strum.used; let best=cu.k;
+        for(let d=0;d<L.length;d++){ const up=cu.k+d, dn=cu.k-d;
+          if(up<L.length&&!pcs.has(L[up]%12)){best=up;break;} if(dn>=0&&!pcs.has(L[dn]%12)){best=dn;break;} }
+        cu.k=best; }
+      strum.used.add(L[cu.k]%12);
+      const tt=Math.max(t+.02,strum.nextT); strum.nextT=tt+.07;
+      const v=strum.n>1?.85/Math.sqrt(strum.n):1/(1+.2*(recent.length-1)); // flurries and big chords ring softer so nothing piles up
+      // the touch itself: an instant, crisp chime on the creature's own chord tone, so every contact answers you right away
+      let mt=L[cu.k]; while(mt<74) mt+=12; while(mt>91) mt-=12;
+      ting(mt,t,strum.n>1?.9/Math.sqrt(strum.n):1,i);
+      bloop(t); V.play(L[cu.k],tt,v,L,cu.k);
+      if(strum.n>1){ const G=ladder(); if(strum.n===2) string(G[Math.min(strum.pk,G.length-1)],tt-.05,.55);
+        strum.pk++; string(G[Math.min(strum.pk,G.length-1)],tt,.55); }
+      echoes.push({i,step:cu.k,next:t+LOOP,gen:1,x,y,color,id}); if(echoes.length>18) echoes.shift(); },
+    levelChord(){ if(!ctx) return; const t=ctx.currentTime+.1, L=ladder(); [0,2,4,7].forEach((k,i)=>bell(L[Math.min(k,L.length-1)],t+i*.7,.7)); },
+    setMusic(v){musicOn=v; if(music) music.gain.setTargetAtTime(v?.5:0,ctx.currentTime,.6);},
+    setSfx(v){sfxOn=v; if(sfx) sfx.gain.setTargetAtTime(v?.55:0,ctx.currentTime,.1);},
+    suspend(){ if(ctx&&ctx.state==="running") ctx.suspend(); },
+    resume(){ if(ctx&&ctx.state==="suspended") ctx.resume(); },
+    reset(){ echoes=[]; cursor.forEach(c=>{c.k=-1;}); recent=[]; },
+    stop(){ if(!ctx) return; echoes=[]; api.stopped=true; master.gain.cancelScheduledValues(ctx.currentTime);
+      master.gain.setTargetAtTime(0,ctx.currentTime,.15); setTimeout(()=>{ if(api.stopped&&ctx.state==="running") ctx.suspend(); },800); },
+    start(){ api.stopped=false; if(!ctx){ init(); return; } ctx.resume(); master.gain.cancelScheduledValues(ctx.currentTime); master.gain.setTargetAtTime(.85,ctx.currentTime,.3); }
+  };
+  return api;
+})();
+// a soft ripple where a creature was popped, each time its echo returns
+Audio.onEcho=e=>{ rings.push({x:e.x,y:e.y,r:1,life:.45/e.gen+.15,c:e.color,faint:true}); for(const q of grains) if(q.id===e.id&&!q.sweep) q.glow=.8/e.gen; };
+document.addEventListener("visibilitychange",()=>{ if(document.hidden) Audio.suspend(); else if(started&&!paused) Audio.resume(); });
+function bindToggle(id,fn){const b=document.getElementById(id); b.addEventListener("click",e=>{e.stopPropagation(); const v=b.getAttribute("aria-pressed")!=="true"; b.setAttribute("aria-pressed",String(v)); fn(v);});
+  b.addEventListener("pointerdown",e=>e.stopPropagation());}
+bindToggle("tgMusic",v=>Audio.setMusic(v));
+bindToggle("tgChime",v=>Audio.setSfx(v));
+window.addEventListener("keydown",e=>{ if(e.key==="m"||e.key==="M") document.getElementById("tgMusic").click();
+  if(e.key===" "&&started&&!e.target.closest("button")){ e.preventDefault(); paused?play():pause(); } });
+
+// ---------- Play / Pause / Restart / Stop ----------
+let paused=false;
+function syncControls(){ document.getElementById("cPlay").disabled=!paused; document.getElementById("cPause").disabled=paused;
+  stage.classList.toggle("paused",paused); }
+function play(){ if(!started){ begin(); return; } if(!paused) return; paused=false; lastT=performance.now(); Audio.resume(); syncControls(); }
+function pause(){ if(!started||paused) return; paused=true; Audio.suspend(); syncControls(); }
+function resetWorld(){
+  level=1; popped=0; creatures=[]; trail=[]; parts=[]; rings=[]; bubbles=[]; spawnT=.5;
+  bgPrev=null; bg=buildBG(1); bgBlend=1; Audio.reset(); updateHud(); renderPips();
+}
+function restart(){ if(!started) return; sweepMandala(); resetWorld(); paused=false; lastT=performance.now(); Audio.start(); syncControls();
+  showBanner(["Swept clear","A fresh tide","That song is gone now. A new one begins with your next touch.",5200]); Audio.levelChord(); playTime=0; nextWhisper=50; document.getElementById("whisper").classList.remove("show"); }
+function stopGame(){ if(!started) return;
+  started=false; paused=false; Audio.stop(); sweepMandala(); resetWorld(); syncControls(); playTime=0; nextWhisper=50;
+  document.getElementById("whisper").classList.remove("show");
+  document.getElementById("best").textContent="That song is gone now. A new one is waiting.";
+  document.getElementById("hud").classList.add("off"); document.getElementById("controls").classList.add("off");
+  document.getElementById("banner").classList.remove("show");
+  const t=document.getElementById("title"); t.hidden=false; requestAnimationFrame(()=>t.classList.remove("gone"));
+  document.getElementById("begin").focus({preventScroll:true});
+}
+// full screen: works in desktop browsers; the button hides itself where full screen isn't available
+const fsEl=()=>document.fullscreenElement||document.webkitFullscreenElement;
+const fsOK=!!(document.fullscreenEnabled||document.webkitFullscreenEnabled);
+const fsBtn=document.getElementById("cFull"); if(!fsOK) fsBtn.hidden=true;
+function toggleFull(){
+  try{
+    if(fsEl()){ (document.exitFullscreen||document.webkitExitFullscreen).call(document)?.catch?.(()=>{}); }
+    else { const r=document.documentElement; (r.requestFullscreen||r.webkitRequestFullscreen).call(r)?.catch?.(()=>{ fsBtn.hidden=true; }); }
+  }catch(e){ fsBtn.hidden=true; }
+}
+function syncFull(){ const on=!!fsEl(); fsBtn.classList.toggle("fs-on",on); fsBtn.setAttribute("aria-pressed",String(on));
+  fsBtn.querySelector("span").textContent=on?"Exit full screen":"Full screen"; }
+document.addEventListener("fullscreenchange",syncFull); document.addEventListener("webkitfullscreenchange",syncFull);
+window.addEventListener("keydown",e=>{ if((e.key==="f"||e.key==="F")&&started&&!fsBtn.hidden) toggleFull(); });
+for(const [id,fn] of [["cPlay",play],["cPause",pause],["cRestart",restart],["cStop",stopGame],["cFull",toggleFull]]){
+  const b=document.getElementById(id); b.addEventListener("click",e=>{e.stopPropagation(); fn();}); b.addEventListener("pointerdown",e=>e.stopPropagation()); }
+
+function begin(){
+  if(started) return; started=true; paused=false; Audio.start();
+  document.getElementById("title").classList.add("gone");
+  document.getElementById("hud").classList.remove("off");
+  document.getElementById("controls").classList.remove("off"); syncControls();
+  updateHud(); renderPips(); showBanner(); Audio.levelChord();
+  setTimeout(()=>{ if(started) document.getElementById("title").hidden=true; },1100);
+}
+// each dive opens with a short intention card; the music starts softly behind it
+function showIntro(){
+  if(started) return; Audio.start();
+  const t=document.getElementById("title"), it=document.getElementById("intro");
+  t.classList.add("gone"); setTimeout(()=>{ if(it.classList.contains("show")||started) t.hidden=true; },1100);
+  it.hidden=false; requestAnimationFrame(()=>requestAnimationFrame(()=>it.classList.add("show")));
+  document.getElementById("introGo").focus({preventScroll:true});
+}
+function closeIntro(){ const it=document.getElementById("intro"); it.classList.remove("show"); setTimeout(()=>{ if(!it.classList.contains("show")) it.hidden=true; },1400); begin(); }
+document.getElementById("begin").addEventListener("click",e=>{e.stopPropagation();showIntro();});
+for(const ev of ["pointerdown","pointermove"]) document.getElementById("intro").addEventListener(ev,e=>e.stopPropagation());
+document.getElementById("introGo").addEventListener("click",e=>{e.stopPropagation();closeIntro();});
+document.getElementById("begin").addEventListener("pointerdown",e=>e.stopPropagation());
+
+// ---------- Render ----------
+function drawWorld(dt){
+  // background (crossfade between depths)
+  if(bgPrev&&bgBlend<1){ bgBlend=Math.min(1,bgBlend+dt/3.5); g.drawImage(bgPrev,0,0); g.globalAlpha=bgBlend; g.drawImage(bg,0,0); g.globalAlpha=1; if(bgBlend>=1) bgPrev=null; }
+  else g.drawImage(bg,0,0);
+  const t=depthT(level);
+  // light rays
+  const shallow=Math.max(0,1-(level-1)/7);
+  if(shallow>0){
+    g.globalCompositeOperation="lighter";
+    for(let k=0;k<5;k++){
+      const x0=((k+.5)/5)*W+Math.sin(time*.13+k*1.7)*W*.06, sw=6+k%3*4, len=H*(.55+.15*Math.sin(k));
+      g.fillStyle=`rgba(170,235,255,${(.035+.02*Math.sin(time*.4+k))*shallow})`;
+      g.beginPath(); g.moveTo(x0,0); g.lineTo(x0+sw,0); g.lineTo(x0+sw+len*.45,len); g.lineTo(x0+len*.35,len); g.closePath(); g.fill();
+    }
+    g.globalCompositeOperation="source-over";
+  }
+  // background kelp
+  const wA=mix([46,120,80],[14,38,40],t), wB=mix([30,90,60],[8,26,30],t);
+  for(const w of weeds){
+    for(let i=0;i<w.h;i++){
+      const ox=Math.round(Math.sin(time*.7+w.ph+i*.16)*i*.09);
+      g.fillStyle=`rgb(${(w.tone>.5?wA:wB).join()})`; g.fillRect(w.x+ox,floorY+1-i,1,1);
+      if(i%5===2) g.fillRect(w.x+ox+(i%10<5?1:-1),floorY+1-i,1,1);
+    }
+  }
+  // marine snow (more visible deeper)
+  g.fillStyle="#dff6ff";
+  for(const s of snow){ s.y+=s.v*dt; s.x+=Math.sin(time*.3+s.y*.05)*.04; if(s.y>H){s.y=-1;s.x=Math.random()*W;}
+    g.globalAlpha=s.a*(.35+.65*t); g.fillRect(Math.round(s.x),Math.round(s.y),1,1);} g.globalAlpha=1;
+  // ambient bubbles
+  if(Math.random()<dt*.6) bubbles.push({x:rnd(0,W),y:floorY,v:rnd(6,12),ph:Math.random()*6,big:Math.random()<.3});
+}
+function drawFx(dt){
+  // bubbles
+  g.fillStyle="rgba(210,245,255,.7)";
+  bubbles=bubbles.filter(b=>{ b.y-=b.v*dt; const x=Math.round(b.x+Math.sin(time*3+b.ph)*1.2), y=Math.round(b.y);
+    if(b.big){g.fillRect(x-1,y,1,1);g.fillRect(x+1,y,1,1);g.fillRect(x,y-1,1,1);g.fillRect(x,y+1,1,1);} else g.fillRect(x,y,1,1);
+    return b.y>-4;});
+  // pop particles
+  parts=parts.filter(p=>{ p.life-=dt; p.vx*=Math.pow(.04,dt); p.vy*=Math.pow(.04,dt); p.vy+=4*dt; p.x+=p.vx*dt; p.y+=p.vy*dt;
+    g.globalAlpha=Math.max(0,p.life/p.max); g.fillStyle=p.c; g.fillRect(Math.round(p.x),Math.round(p.y),1,1); return p.life>0;});
+  g.globalAlpha=1;
+  // rings
+  g.globalCompositeOperation="lighter";
+  rings=rings.filter(r=>{ r.life-=dt; r.r+=dt*26; const n=Math.ceil(r.r*6.283);
+    if(r.faint){ g.fillStyle=r.c; g.globalAlpha=Math.max(0,r.life)*.5; } else g.fillStyle=`rgba(160,255,180,${Math.max(0,r.life)*.7})`;
+    for(let i=0;i<n;i++){const a=i/n*6.283; g.fillRect(Math.round(r.x+Math.cos(a)*r.r),Math.round(r.y+Math.sin(a)*r.r),1,1);} g.globalAlpha=1; return r.life>0;});
+  // phosphorescent trail
+  trail=trail.filter(p=>{ p.life-=dt; if(p.life<=0) return false;
+    p.vx*=Math.pow(.2,dt); p.vy*=Math.pow(.3,dt); p.x+=p.vx*dt; p.y+=p.vy*dt;
+    const a=p.life/p.max, x=Math.round(p.x), y=Math.round(p.y);
+    if(!p.spark){ g.fillStyle=p.c; g.globalAlpha=a*.16; g.fillRect(x-1,y-1,3,3); }
+    g.globalAlpha=p.spark?a*(.5+.5*Math.sin(time*20+p.x)):Math.min(1,a*1.3); g.fillStyle=p.c; g.fillRect(x,y,1,1);
+    return true;});
+  g.globalAlpha=1;
+  // cursor head
+  if(ptr.on&&performance.now()-ptr.last<4000){
+    const x=Math.round(ptr.x),y=Math.round(ptr.y),pl=.75+.25*Math.sin(time*4);
+    g.fillStyle=`rgba(120,255,150,${.18*pl})`; g.fillRect(x-2,y-2,5,5);
+    g.fillStyle=`rgba(225,255,220,${pl})`; g.fillRect(x,y,1,1); g.fillRect(x-1,y,1,1); g.fillRect(x+1,y,1,1); g.fillRect(x,y-1,1,1); g.fillRect(x,y+1,1,1);
+  }
+  g.globalCompositeOperation="source-over";
+}
+
+let lastT=performance.now(), playTime=0, nextWhisper=50, whisperI=0;
+const WHISPERS=["This song has never been played before.","Nothing to win. Nothing to keep.","Let each sound go as it fades.","The sand settles, then drifts. So does everything.","Just this breath. Just this light.","The tide keeps nothing, and is never empty."];
+function whisper(){ const w=document.getElementById("whisper"); w.textContent=WHISPERS[whisperI++%WHISPERS.length];
+  w.classList.add("show"); setTimeout(()=>w.classList.remove("show"),7000); }
+function frame(now){
+  const dt=Math.min(.05,(now-lastT)/1000); lastT=now;
+  if(paused){ requestAnimationFrame(frame); return; }
+  time+=dt;
+  spawnT-=dt;
+  const maxAlive=4+Math.min(level,5)+(started?0:-1);
+  if(spawnT<=0){ if(creatures.filter(c=>c.state==="live").length<maxAlive) spawn(); spawnT=Math.max(.9,1.7-level*.05)*rnd(.7,1.3); }
+  creatures=creatures.filter(c=>updateCreature(c,dt));
+  drawWorld(dt);
+  drawMandala(dt);
+  if(started){ playTime+=dt; if(playTime>nextWhisper){ whisper(); nextWhisper=playTime+rnd(150,230); } }
+  for(const c of creatures) drawCreature(c);
+  drawFx(dt);
+  requestAnimationFrame(frame);
+}
+
+// hot-reload support: keep the dive going across page updates
+window.claude?.hot?.snapshot?.(()=>({level,popped,started}));
+function start(d){
+  if(d&&d.level){level=d.level;popped=d.popped||0;}
+  resize(); addEventListener("resize",resize);
+  for(let i=0;i<3;i++){spawn(); creatures.forEach(c=>{ if(c.def.move!=="rise") c.x=c.dir>0?rnd(W*.1,W*.6):rnd(W*.4,W*.9); else c.y=rnd(H*.4,H*.9);});}
+  if(d&&d.started) begin();
+  requestAnimationFrame(frame);
+}
+window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+})();
+</script>
+
+</body></html>
